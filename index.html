@@ -268,13 +268,19 @@ if(window.previewCsv){
   let parsedNames=[];
   const parseCsv=async()=>{
     const f=csvFile.files?.[0]; if(!f) throw Error('Choose a CSV file first.');
-    const text=await f.text();
+    // Excel CSV files may use Windows-1252 rather than UTF-8. Decode safely so Irish fadas survive.
+    const bytes=await f.arrayBuffer();
+    let text;
+    try { text=new TextDecoder('utf-8',{fatal:true}).decode(bytes); }
+    catch { text=new TextDecoder('windows-1252').decode(bytes); }
     const lines=text.replace(/\r/g,'').split('\n').filter(x=>x.trim()!=='');
     if(!lines.length) throw Error('The CSV is empty.');
     const header=lines[0].replace(/^\uFEFF/,'').trim().replace(/^"|"$/g,'');
     if(header.toLowerCase()!=='name') throw Error('The first column header must be Name.');
     parsedNames=lines.slice(1).map(line=>{let v=line.trim();if(v.startsWith('"')&&v.endsWith('"'))v=v.slice(1,-1).replace(/""/g,'"');return v.trim()}).filter(Boolean);
+    parsedNames=parsedNames.map(n=>n.normalize('NFC'));
     parsedNames=[...new Set(parsedNames)];
+    if(parsedNames.some(n=>n.includes('\uFFFD'))) throw Error('Some names contain invalid characters. Save your roster as UTF-8 CSV and try again.');
     if(!parsedNames.length) throw Error('No player names were found.');
     if(parsedNames.length>40) throw Error('Maximum 40 players per game.');
     csvStatus.textContent=`${parsedNames.length} names ready to import.`;
